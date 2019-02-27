@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 __title__ = 'Assign hosts to groups based on tags'
-__version__ = '0.2'
+__version__ = '1.0RC1'
 __author__ = 'mp@vectra.ai'
 __copyright__ = 'Vectra AI, Inc.'
-__status__ = 'Development'
+__status__ = 'Production'
 __license__ = 'Released under the  MIT License'
 
 '''
