@@ -10,7 +10,6 @@ Python3, and requests module.  A Vectra API key is also required and can be gene
 
 When ran, the script needs to be given a direction, either pull (read) or push (write). 
 
-Say what the step will be
 
 ```
 python3 tags2groups.py --pull https://vectra.local AAABBBCCCDDDEEEFFF
@@ -31,6 +30,14 @@ Edit tag_groups.py deleting unwanted conversions and changing group names where 
 ```
 python3 tags2groups.py --push https://vectra.local AAABBBCCCDDDEEEFFF
 ```
+
+## Recommendations
+When the tag to group mapping file is updated by the user to reflect the desired mappings, run with the --push flag initially initially without the --poptag flag and then review Cognito Detect brain for desired outcome.  Any improper mappings can be easily reverted by deleting the group under the "Host Groups" tab of the "Manage" page.
+Once the mappings are correct, if desired, you can rerun the script with the --push and --poptag flags to remove the tags specified in the tags to group mapping file.
+
+## Logging
+Informational messages are displayed to standard output indicating the hosts being added to groups.  This information is also written to the tags2groups.log file in the local directory.
+
 ### Help Output
 usage: tags2groups.py [-h] [--pull] [--push] [--poptag] [--active]
 cognito_url cognito_token

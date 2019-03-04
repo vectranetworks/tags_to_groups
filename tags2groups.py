@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 __title__ = 'Assign hosts to groups based on tags'
-__version__ = '1.0RC1'
+__version__ = '1.0'
 __author__ = 'mp@vectra.ai'
 __copyright__ = 'Vectra AI, Inc.'
 __status__ = 'Production'
@@ -27,9 +27,22 @@ except ImportError as error:
 
 
 #  Logging setup
-syslog_logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logger.setLevel(logging.INFO)
+fh = logging.FileHandler('tags2groups.log')
+fh.setLevel(logging.INFO)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+ch.setFormatter(formatter)
+fh.setFormatter(formatter)
+
+logger.addHandler(ch)
+logger.addHandler(fh)
 
 requests.packages.urllib3.disable_warnings()
 
@@ -73,10 +86,10 @@ def test_creds(url, headers):
         if response.status_code in [200, 201]:
             return
         else:
-            syslog_logger.info('Error code: {}, Credential errors: {}'.format(response.status_code, response.content))
+            logger.info('Error code: {}, Credential errors: {}'.format(response.status_code, response.content))
             sys.exit(1)
     except requests.exceptions.ConnectionError:
-        syslog_logger.info('\nUnable to establish connection with brain: {}\n\n'.format(args.cognito_url))
+        logger.info('\nUnable to establish connection with brain: {}\n\n'.format(args.cognito_url))
         sys.exit(1)
 
 
@@ -97,6 +110,16 @@ def poll_vectra_hosts(url, headers):
     for hid in response:
         id_list.append(hid['id'])
     return id_list
+
+
+def poll_vectra_host_names(ids):
+    #  Supplied with a list of host IDs, returns a list of host names
+    host_list = []
+    for hid in ids:
+        url = args.cognito_url + '/api/v2/hosts/' + str(hid) + '?fields=name'
+        host_list.append(requests.request("GET", url, headers=vectra_header, verify=False).json()['name'])
+
+    return host_list
 
 
 def gen_tag_file(tags):
@@ -134,7 +157,7 @@ def add_host_to_group(group, host_ids):
     #  Adds a list of hosts to a group, creating the group if needed
     body_dict = {
         "name": group,
-        "description": "Created by script",
+        "description": "Created by tags2groups script",
         "type": "host",
         "members": host_ids
     }
@@ -143,14 +166,17 @@ def add_host_to_group(group, host_ids):
     #  Check to see if group already exists
     cognito_group_check_url = args.cognito_url + api + 'groups/?name=' + group
     group_results = requests.request("GET", url=cognito_group_check_url, headers=vectra_header, verify=False).json()
-    syslog_logger.debug('Group results:{}'.format(group_results))
+    logger.debug('Checking if group {} exists.'.format(group))
+    logger.debug('Group results:{}'.format(group_results))
     if not group_results:
         #  Group does not exist
         cognito_group_url = args.cognito_url + api + 'groups/'
         response = requests.request("POST", url=cognito_group_url, headers=vectra_header, data=body, verify=False)
-        syslog_logger.debug('Group: {} does not exist, response:{}'.format(group, response))
+        hostnames = poll_vectra_host_names(host_ids)
+        logger.info('Creating group: [{}], adding hosts: {}'.format(group, hostnames))
+        logger.debug('Group: {} does not exist, creating.  Response: {}'.format(group, response))
     else:
-        syslog_logger.debug('Group like: {} exists'.format(group))
+        logger.info('Group like: [{}] exists'.format(group))
         #  Group exists, possible fuzzy match
         for item in group_results:
             if item['name'] == group:
@@ -160,21 +186,25 @@ def add_host_to_group(group, host_ids):
                 for member in item['members']:
                     pre_exist_members.append(member['id'])
                 #  Combine existing hosts with updated hosts and remove duplicates
+                hostnames = poll_vectra_host_names(host_ids)
+                logger.info('Adding hosts {} to group: [{}]'.format(hostnames, group))
                 host_id_list = list(set(pre_exist_members + host_ids))
                 cognito_group_url = args.cognito_url + api + 'groups/' + str(group_id)
-                syslog_logger.debug('group URL:{}'.format(cognito_group_url))
+                logger.debug('group URL:{}'.format(cognito_group_url))
                 body_dict = {
                     "members": host_id_list
                 }
                 body = json.dumps(body_dict)
                 response = requests.request("PATCH", url=cognito_group_url, headers=vectra_header,
                                             data=body, verify=False)
-                syslog_logger.debug('Group: {} exists, response:{}'.format(group, response))
+                logger.debug('Group: {} exists, response:{}'.format(group, response))
             else:
                 cognito_group_url = args.cognito_url + api + 'groups/'
                 response = requests.request("POST", url=cognito_group_url, headers=vectra_header, data=body,
                                             verify=False)
-                syslog_logger.debug('Group like: {} does not exist, response:{}'.format(group, response))
+                logger.debug('Group like: {} does not exist creating, response:{}'.format(group, response))
+                hostnames = poll_vectra_host_names(host_ids)
+                logger.info('Creating group: [{}], adding hosts: {}'.format(group, hostnames))
 
 
 def process_hosts(group_dict):
@@ -189,10 +219,10 @@ def process_hosts(group_dict):
             cognito_tagged_host_url += 'host.state:"active" AND '
         if len(tag) == 1:
             cognito_tagged_host_url += 'host.tags:"{}"'.format(tag[0])
-            syslog_logger.debug(cognito_tagged_host_url)
+            logger.debug(cognito_tagged_host_url)
             tag_list.append(tag[0])
         else:
-            syslog_logger.debug('tag list:\"{}\"'.format(tag))
+            logger.debug('tag list:\"{}\"'.format(tag))
             list_len = len(tag) - 1
             count = 0
             cognito_tagged_host_url += '(host.tags:'
@@ -209,14 +239,14 @@ def process_hosts(group_dict):
                     cognito_tagged_host_url += ' OR "{}"'.format(tag[count])
                     tag_list.append(tag[count])
                     count += 1
-            syslog_logger.debug(cognito_tagged_host_url)
+            logger.debug(cognito_tagged_host_url)
 
         ids = poll_vectra_hosts(cognito_tagged_host_url, vectra_header)
         if args.poptag:
             #  Call update_tags with list of Host IDs and tag to be removed
-            syslog_logger.debug('Host_ids:{}, tag_list:{}'.format(ids, tag_list))
+            logger.debug('Host_ids:{}, tag_list:{}'.format(ids, tag_list))
             remove_tags(ids, tag_list)
-        syslog_logger.debug('Group:{}, ids:{}'.format(key, ids))
+        logger.debug('Group:{}, ids:{}'.format(key, ids))
         add_host_to_group(key, ids)
 
 
@@ -226,7 +256,7 @@ def remove_tags(hostid_list, remove_list):
     for hostid in hostid_list:
         urlp = args.cognito_url + vectra_tag_uri + str(hostid)
         urlq = urlp + '?fields=tags'
-        syslog_logger.debug('Update_tags url:%s', urlp)
+        logger.debug('Update_tags url:%s', urlp)
         tags = requests.get(url=urlq, headers=vectra_header, verify=False).json()['tags']
         for remove in remove_list:
             try:
@@ -236,7 +266,7 @@ def remove_tags(hostid_list, remove_list):
 
         body = json.dumps({'tags': tags})
         r = requests.patch(url=urlp, headers=vectra_header, data=body, verify=False)
-        syslog_logger.debug('Tag patch results:{}'.format(r))
+        logger.debug('Tag patch results:{}'.format(r))
 
 
 if __name__ == '__main__':
@@ -245,26 +275,26 @@ if __name__ == '__main__':
         #  Pull tags from hosts (first step)
         if args.active:
             #  Only pull tags from active hosts
-            syslog_logger.info('Collecting active hosts with tags')
+            logger.info('Collecting active hosts with tags')
             cognito_full_url = args.cognito_url + api + 'search/hosts/?page_size=' + page_size + '&field=tags' + \
                 '&query_string=host.state:"active" AND host.tags:*'
         else:
             #  Pull tags from all hosts
-            syslog_logger.info('Collecting all hosts with tags')
+            logger.info('Collecting all hosts with tags')
             cognito_full_url = args.cognito_url + api + 'search/hosts/?page_size=' + page_size + '&field=tags' + \
                 '&query_string=host.tags:*'
-        syslog_logger.debug('URL:{}'.format(cognito_full_url))
+        logger.debug('URL:{}'.format(cognito_full_url))
         tags = poll_vectra_tags(cognito_full_url, vectra_header)
-        syslog_logger.debug('Tags:{}'.format(tags))
+        logger.debug('Tags:{}'.format(tags))
         gen_tag_file(tags)
         print('\nStep 1.  Edit {} and define tag to group relationship.\nStep 2.  Rerun script with --push flag\n'
               .format(tag_file))
     elif args.push:
         test_creds(args.cognito_url + api, vectra_header)
         #  Import group and tag relationship from file
-        syslog_logger.info('Adding hosts to groups')
+        logger.info('Adding hosts to groups')
         groups = process_tag_file()
-        syslog_logger.debug(groups)
+        logger.debug(groups)
         #  Collect dictionary of hosts with those tags
         #  Process hosts to add tags
         process_hosts(groups)
