@@ -32,7 +32,7 @@ python3 tags2groups.py --push https://vectra.local AAABBBCCCDDDEEEFFF
 ```
 
 ## Recommendations
-When the tag to group mapping file is updated by the user to reflect the desired mappings, run with the --push flag initially initially without the --poptag flag and then review Cognito Detect brain for desired outcome.  Any improper mappings can be easily reverted by deleting the group under the "Host Groups" tab of the "Manage" page.
+When the tag to group mapping file is updated by the user to reflect the desired mappings, run with the --push flag initially without the --poptag flag and then review Cognito Detect brain for desired outcome.  Any improper mappings can be easily reverted by deleting the group under the "Host Groups" tab of the "Manage" page.
 Once the mappings are correct, if desired, you can rerun the script with the --push and --poptag flags to remove the tags specified in the tags to group mapping file.
 
 ## Logging
