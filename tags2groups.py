@@ -168,7 +168,7 @@ def add_host_to_group(group, host_ids):
     group_results = requests.request("GET", url=cognito_group_check_url, headers=vectra_header, verify=False).json()
     logger.debug('Checking if group {} exists.'.format(group))
     logger.debug('Group results:{}'.format(group_results))
-    if not group_results:
+    if not bool(group_results['count']):
         #  Group does not exist
         cognito_group_url = args.cognito_url + api + 'groups/'
         response = requests.request("POST", url=cognito_group_url, headers=vectra_header, data=body, verify=False)
