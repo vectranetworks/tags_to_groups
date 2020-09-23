@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-
 __title__ = 'Assign hosts to groups based on tags'
-__version__ = '1.0'
+__version__ = '1.2'
 __author__ = 'mp@vectra.ai'
 __copyright__ = 'Vectra AI, Inc.'
 __status__ = 'Production'
